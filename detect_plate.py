@@ -22,10 +22,10 @@ from plate_recognition.double_plate_split_merge import get_split_merge
 from plate_recognition.color_rec import plate_color_rec, init_color_model
 from flask import Flask
 import requests
+from urllib import request
 from io import BytesIO
 from PIL import Image
 import time
-
 
 clors = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 255, 0), (0, 255, 255)]
 danger = ['危', '险']
@@ -241,167 +241,153 @@ def get_second(capture):
         return int(rate), int(FrameNumber), int(duration)
 
 
-def detect_image(imageUrl):
+def detect_image(imageUrl):  # 检测网络图片
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--detect_model', nargs='+', type=str, default='weights/plate_detect.pt',
+                        help='model.pt path(s)')  # 检测模型
+    parser.add_argument('--rec_model', type=str, default='weights/plate_rec.pth', help='model.pt path(s)')  # 识别模型
+    parser.add_argument('--color_model', type=str, default='weights/color_classify.pth', help='plate color')  # 颜色识别模型
+    parser.add_argument('--img_size', type=int, default=640, help='inference size (pixels)')
+    opt = parser.parse_args()
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    detect_model = load_model(opt.detect_model, device)  # 初始化检测模型
+    plate_rec_model = init_model(device, opt.rec_model)  # 初始化识别模型
+    plate_color_model = init_color_model(opt.color_model, device)
+
+    response = requests.get(imageUrl)
+    response = response.content
+    img = np.asarray(bytearray(response), dtype="uint8")
+    img = cv2.imdecode(img, -1)
+    if img is None:
+        print("图像识别失败")
+        return []
+    if img.shape[-1] == 4:
+        img = cv2.cvtColor(np.asarray(img), cv2.COLOR_BGRA2BGR)
+
+    dict_list = detect_Recognition_plate(detect_model, img, device, plate_rec_model, opt.img_size, plate_color_model)
+    print("车牌号识别", dict_list)
+    return dict_list
+
+
+if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--detect_model', nargs='+', type=str, default='weights/plate_detect.pt',
                         help='model.pt path(s)')  # 检测模型
     parser.add_argument('--rec_model', type=str, default='weights/plate_rec.pth', help='model.pt path(s)')  # 识别模型
     parser.add_argument('--color_model', type=str, default='weights/color_classify.pth', help='plate color')  # 颜色识别模型
-    parser.add_argument('--image_path', type=str, default='imgs/1565img1670311401660.jpg', help='source')
+    parser.add_argument('--image_path', type=str, default='imgs', help='source')
     parser.add_argument('--img_size', type=int, default=640, help='inference size (pixels)')
     parser.add_argument('--output', type=str, default='result1', help='source')
     parser.add_argument('--video', type=str, default='', help='source')
-    opt = parser.parse_args()
-    save_path = opt.output
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # device =torch.device("cpu")
+    opt = parser.parse_args()
+    print(opt)
+    save_path = opt.output
+    count = 0
+    if not os.path.exists(save_path):
+        os.mkdir(save_path)
+
     detect_model = load_model(opt.detect_model, device)  # 初始化检测模型
     plate_rec_model = init_model(device, opt.rec_model)  # 初始化识别模型
-    # print(count, opt.image_path, end=" ")
-    response = requests.get(imageUrl)
-    response = response.content
-    print(response.__sizeof__())
+    # 算参数量
+    total = sum(p.numel() for p in detect_model.parameters())
+    total_1 = sum(p.numel() for p in plate_rec_model.parameters())
+    print("detect params: %.2fM,rec params: %.2fM" % (total / 1e6, total_1 / 1e6))
+
+    plate_color_model = init_color_model(opt.color_model, device)
+    time_all = 0
+    time_begin = time.time()
+    if not opt.video:  # 处理图片
+        if not os.path.isfile(opt.image_path):  # 目录
+            file_list = []
+            allFilePath(opt.image_path, file_list)
+            for img_path in file_list:
+
+                print(count, img_path, end=" ")
+                time_b = time.time()
+                img = cv_imread(img_path)
+
+                if img is None:
+                    continue
+                if img.shape[-1] == 4:
+                    img = cv2.cvtColor(np.asarray(img), cv2.COLOR_BGRA2BGR)
+                # detect_one(model,img_path,device)
+                dict_list = detect_Recognition_plate(detect_model, img, device, plate_rec_model, opt.img_size,
+                                                     plate_color_model)
+                ori_img = draw_result(img, dict_list)
+                img_name = os.path.basename(img_path)
+                save_img_path = os.path.join(save_path, img_name)
+                time_e = time.time()
+                time_gap = time_e - time_b
+                if count:
+                    time_all += time_gap
+                cv2.imwrite(save_img_path, ori_img)
+                count += 1
+        else:  # 单个图片
+            print(count, opt.image_path, end=" ")
+            img = cv_imread(opt.image_path)
+            if img.shape[-1] == 4:
+                img = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
+            # detect_one(model,img_path,device)
+            dict_list = detect_Recognition_plate(detect_model, img, device, plate_rec_model, opt.img_size)
+            ori_img = draw_result(img, dict_list)
+            img_name = os.path.basename(opt.image_path)
+            save_img_path = os.path.join(save_path, img_name)
+            cv2.imwrite(save_img_path, ori_img)
+        print(f"sumTime time is {time.time() - time_begin} s, average pic time is {time_all / (len(file_list) - 1)}")
+
+    else:  # 处理视频
+        video_name = opt.video
+        capture = cv2.VideoCapture(video_name)
+        fourcc = cv2.VideoWriter_fourcc(*'MP4V')
+        fps = capture.get(cv2.CAP_PROP_FPS)  # 帧数
+        width, height = int(capture.get(cv2.CAP_PROP_FRAME_WIDTH)), int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT))  # 宽高
+        out = cv2.VideoWriter('result.mp4', fourcc, fps, (width, height))  # 写入视频
+        frame_count = 0
+        fps_all = 0
+        rate, FrameNumber, duration = get_second(capture)
+        if capture.isOpened():
+            while True:
+                t1 = cv2.getTickCount()
+                frame_count += 1
+                print(f"第{frame_count} 帧", end=" ")
+                ret, img = capture.read()
+                if not ret:
+                    break
+                # if frame_count%rate==0:
+                img0 = copy.deepcopy(img)
+                dict_list = detect_Recognition_plate(detect_model, img, device, plate_rec_model, opt.img_size,
+                                                     plate_color_model)
+                ori_img = draw_result(img, dict_list)
+                t2 = cv2.getTickCount()
+                infer_time = (t2 - t1) / cv2.getTickFrequency()
+                fps = 1.0 / infer_time
+                fps_all += fps
+                str_fps = f'fps:{fps:.4f}'
+
+                cv2.putText(ori_img, str_fps, (20, 20), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                # cv2.imshow("haha",ori_img)
+                # cv2.waitKey(1)
+                out.write(ori_img)
+
+                # current_time = int(frame_count/FrameNumber*duration)
+                # sec = current_time%60
+                # minute = current_time//60
+                # for result_ in result_list:
+                #     plate_no = result_['plate_no']
+                #     if not is_car_number(pattern_str,plate_no):
+                #         continue
+                #     print(f'车牌号:{plate_no},时间:{minute}分{sec}秒')
+                #     time_str =f'{minute}分{sec}秒'
+                #     writer.writerow({"车牌":plate_no,"时间":time_str})
+                # out.write(ori_img)
 
 
-    BytesIOObj = BytesIO()
-    BytesIOObj.write(response)
-    img = Image.open(BytesIOObj)
-    img = cv2.cvtColor(np.asarray(img), cv2.COLOR_BGRA2BGR)
-    # img = cv2.imdecode(np.asarray(img),-1)
-    # img = cv_imread(opt.image_path)
-    # if img.shape[-1] == 4:
-    #     img = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
-    # detect_one(model,img_path,device)
-    dict_list = detect_Recognition_plate(detect_model, img, device, plate_rec_model, opt.img_size)
-    print("车牌号识别", dict_list)
-    # ori_img = draw_result(img, dict_list)
-    # img_name = os.path.basename(opt.image_path)
-    # save_img_path = os.path.join(save_path, img_name)
-    # cv2.imwrite(save_img_path, ori_img)
-    return dict_list
-
-if __name__ == '__main__':
-
-    detect_image("https://zztcfiles.cxcc.fun/1562img1670322162714.jpg")
-    # parser = argparse.ArgumentParser()
-    # parser.add_argument('--detect_model', nargs='+', type=str, default='weights/plate_detect.pt',
-    #                     help='model.pt path(s)')  # 检测模型
-    # parser.add_argument('--rec_model', type=str, default='weights/plate_rec.pth', help='model.pt path(s)')  # 识别模型
-    # parser.add_argument('--color_model', type=str, default='weights/color_classify.pth', help='plate color')  # 颜色识别模型
-    # parser.add_argument('--image_path', type=str, default='imgs', help='source')
-    # parser.add_argument('--img_size', type=int, default=640, help='inference size (pixels)')
-    # parser.add_argument('--output', type=str, default='result1', help='source')
-    # parser.add_argument('--video', type=str, default='', help='source')
-    # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    # # device =torch.device("cpu")
-    # opt = parser.parse_args()
-    # print(opt)
-    # save_path = opt.output
-    # count = 0
-    # if not os.path.exists(save_path):
-    #     os.mkdir(save_path)
-    #
-    # detect_model = load_model(opt.detect_model, device)  # 初始化检测模型
-    # plate_rec_model = init_model(device, opt.rec_model)  # 初始化识别模型
-    # # 算参数量
-    # total = sum(p.numel() for p in detect_model.parameters())
-    # total_1 = sum(p.numel() for p in plate_rec_model.parameters())
-    # print("detect params: %.2fM,rec params: %.2fM" % (total / 1e6, total_1 / 1e6))
-    #
-    # plate_color_model = init_color_model(opt.color_model, device)
-    # time_all = 0
-    # time_begin = time.time()
-    # if not opt.video:  # 处理图片
-    #     if not os.path.isfile(opt.image_path):  # 目录
-    #         file_list = []
-    #         allFilePath(opt.image_path, file_list)
-    #         for img_path in file_list:
-    #
-    #             print(count, img_path, end=" ")
-    #             time_b = time.time()
-    #             img = cv_imread(img_path)
-    #
-    #             if img is None:
-    #                 continue
-    #             if img.shape[-1] == 4:
-    #                 img = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
-    #             # detect_one(model,img_path,device)
-    #             dict_list = detect_Recognition_plate(detect_model, img, device, plate_rec_model, opt.img_size,
-    #                                                  plate_color_model)
-    #             ori_img = draw_result(img, dict_list)
-    #             img_name = os.path.basename(img_path)
-    #             save_img_path = os.path.join(save_path, img_name)
-    #             time_e = time.time()
-    #             time_gap = time_e - time_b
-    #             if count:
-    #                 time_all += time_gap
-    #             cv2.imwrite(save_img_path, ori_img)
-    #             count += 1
-    #     else:  # 单个图片
-    #         print(count, opt.image_path, end=" ")
-    #         img = cv_imread(opt.image_path)
-    #         if img.shape[-1] == 4:
-    #             img = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
-    #         # detect_one(model,img_path,device)
-    #         dict_list = detect_Recognition_plate(detect_model, img, device, plate_rec_model, opt.img_size)
-    #         ori_img = draw_result(img, dict_list)
-    #         img_name = os.path.basename(opt.image_path)
-    #         save_img_path = os.path.join(save_path, img_name)
-    #         cv2.imwrite(save_img_path, ori_img)
-    #     print(f"sumTime time is {time.time() - time_begin} s, average pic time is {time_all / (len(file_list) - 1)}")
-    #
-    # else:  # 处理视频
-    #     video_name = opt.video
-    #     capture = cv2.VideoCapture(video_name)
-    #     fourcc = cv2.VideoWriter_fourcc(*'MP4V')
-    #     fps = capture.get(cv2.CAP_PROP_FPS)  # 帧数
-    #     width, height = int(capture.get(cv2.CAP_PROP_FRAME_WIDTH)), int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT))  # 宽高
-    #     out = cv2.VideoWriter('result.mp4', fourcc, fps, (width, height))  # 写入视频
-    #     frame_count = 0
-    #     fps_all = 0
-    #     rate, FrameNumber, duration = get_second(capture)
-    #     if capture.isOpened():
-    #         while True:
-    #             t1 = cv2.getTickCount()
-    #             frame_count += 1
-    #             print(f"第{frame_count} 帧", end=" ")
-    #             ret, img = capture.read()
-    #             if not ret:
-    #                 break
-    #             # if frame_count%rate==0:
-    #             img0 = copy.deepcopy(img)
-    #             dict_list = detect_Recognition_plate(detect_model, img, device, plate_rec_model, opt.img_size,
-    #                                                  plate_color_model)
-    #             ori_img = draw_result(img, dict_list)
-    #             t2 = cv2.getTickCount()
-    #             infer_time = (t2 - t1) / cv2.getTickFrequency()
-    #             fps = 1.0 / infer_time
-    #             fps_all += fps
-    #             str_fps = f'fps:{fps:.4f}'
-    #
-    #             cv2.putText(ori_img, str_fps, (20, 20), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-    #             # cv2.imshow("haha",ori_img)
-    #             # cv2.waitKey(1)
-    #             out.write(ori_img)
-    #
-    #             # current_time = int(frame_count/FrameNumber*duration)
-    #             # sec = current_time%60
-    #             # minute = current_time//60
-    #             # for result_ in result_list:
-    #             #     plate_no = result_['plate_no']
-    #             #     if not is_car_number(pattern_str,plate_no):
-    #             #         continue
-    #             #     print(f'车牌号:{plate_no},时间:{minute}分{sec}秒')
-    #             #     time_str =f'{minute}分{sec}秒'
-    #             #     writer.writerow({"车牌":plate_no,"时间":time_str})
-    #             # out.write(ori_img)
-    #
-    #
-    #     else:
-    #         print("失败")
-    #     capture.release()
-    #     out.release()
-    #     cv2.destroyAllWindows()
-    #     print(f"all frame is {frame_count},average fps is {fps_all / frame_count} fps")
-
-
+        else:
+            print("失败")
+        capture.release()
+        out.release()
+        cv2.destroyAllWindows()
+        print(f"all frame is {frame_count},average fps is {fps_all / frame_count} fps")
