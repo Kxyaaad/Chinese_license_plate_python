@@ -20,11 +20,7 @@ from plate_recognition.plate_rec import get_plate_result, allFilePath, init_mode
 # from plate_recognition.plate_cls import cv_imread
 from plate_recognition.double_plate_split_merge import get_split_merge
 from plate_recognition.color_rec import plate_color_rec, init_color_model
-from flask import Flask
 import requests
-from urllib import request
-from io import BytesIO
-from PIL import Image
 import time
 
 clors = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 255, 0), (0, 255, 255)]
@@ -97,13 +93,13 @@ def get_plate_rec_landmark(img, xyxy, conf, landmarks, class_num, device, plate_
     result_dict = {}
     tl = 1 or round(0.002 * (h + w) / 2) + 1  # line/font thickness
 
-    x1 = int(xyxy[0])
-    y1 = int(xyxy[1])
-    x2 = int(xyxy[2])
-    y2 = int(xyxy[3])
-    height = y2 - y1
+    # x1 = int(xyxy[0])
+    # y1 = int(xyxy[1])
+    # x2 = int(xyxy[2])
+    # y2 = int(xyxy[3])
+    # height = y2 - y1
     landmarks_np = np.zeros((4, 2))
-    rect = [x1, y1, x2, y2]
+    # rect = [x1, y1, x2, y2]
     for i in range(4):
         point_x = int(landmarks[2 * i])
         point_y = int(landmarks[2 * i + 1])
@@ -119,11 +115,11 @@ def get_plate_rec_landmark(img, xyxy, conf, landmarks, class_num, device, plate_
         if dan in plate_number:
             plate_number = '危险品'
     # cv2.imwrite("roi.jpg",roi_img)
-    result_dict['rect'] = rect  # 车牌roi区域
+    # result_dict['rect'] = rect  # 车牌roi区域
     result_dict['detect_conf'] = conf  # 检测区域得分
-    result_dict['landmarks'] = landmarks_np.tolist()  # 车牌角点坐标
+    # result_dict['landmarks'] = landmarks_np.tolist()  # 车牌角点坐标
     result_dict['plate_no'] = plate_number  # 车牌号
-    result_dict['rec_conf'] = rec_prob  # 每个字符的概率
+    # result_dict['rec_conf'] = rec_prob  # 每个字符的概率
     result_dict['roi_height'] = roi_img.shape[0]  # 车牌高度
     result_dict['plate_color'] = color_code  # 车牌颜色
     result_dict['plate_type'] = class_label  # 单双层 0单层 1双层
