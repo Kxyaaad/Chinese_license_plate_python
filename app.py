@@ -5,7 +5,7 @@ import json
 app = flask.Flask(__name__)
 
 
-@app.route('/test', methods=['post'])
+@app.route('/test', methods=['post', 'get'])
 def hello_world():
     imageUrl = flask.request.values.get('imageUrl')
     re = detect_plate.detect_image(imageUrl)

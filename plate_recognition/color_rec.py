@@ -48,20 +48,20 @@ def init_color_model(model_path,device):
 
 
 def plate_color_rec(img,model,device):
-    # class_name = ['黑色', '蓝色', '', '绿色', '白色', '黄色']
-    # data_input = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-    # image = cv2.resize(data_input, (34, 9))
-    # image = np.transpose(image, (2, 0, 1))
-    # img = image / 255
-    # img = torch.tensor(img)
-    #
-    # normalize = transforms.Normalize(mean=[0.4243, 0.4947, 0.434],
-    #                                  std=[0.2569, 0.2478, 0.2174])
-    # img = normalize(img)
-    # img = torch.unsqueeze(img, dim=0).to(device).float()
-    # xx = model(img)
-    #
-    # return class_name[int(torch.argmax(xx, dim=1)[0])]
+    class_name = ['黑色', '蓝色', '', '绿色', '白色', '黄色']
+    data_input = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    image = cv2.resize(data_input, (34, 9))
+    image = np.transpose(image, (2, 0, 1))
+    img = image / 255
+    img = torch.tensor(img)
+
+    normalize = transforms.Normalize(mean=[0.4243, 0.4947, 0.434],
+                                     std=[0.2569, 0.2478, 0.2174])
+    img = normalize(img)
+    img = torch.unsqueeze(img, dim=0).to(device).float()
+    xx = model(img)
+
+    return class_name[int(torch.argmax(xx, dim=1)[0])]
     return "蓝色"
 
 if __name__ == '__main__':
