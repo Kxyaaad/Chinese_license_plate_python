@@ -4,8 +4,19 @@ import torch
 import numpy as np
 import torch.nn as nn
 from torchvision import transforms
+import collections
 from plate_recognition.plateNet import MyNet_color
+import pandas as pd
+import matplotlib.pyplot as plt
+import matplotlib.patches as patches
+import matplotlib.image as mpimg
+from PIL import Image
+from matplotlib.offsetbox import OffsetImage, AnnotationBbox
+import extcolors
+from colormap import rgb2hex
 
+import cv2
+# import extc
 
 class MyNet(nn.Module):
     def __init__(self, class_num=6):
@@ -47,22 +58,43 @@ def init_color_model(model_path,device):
     return modelc
 
 
-def plate_color_rec(img,model,device):
+def plate_color_rec(img,model,device,origin_image):
+    cv2.imwrite('test.jpg',img)
+    colors_x = extcolors.extract_from_path('test.jpg', tolerance=34, limit=3)
+
+    yellow = np.uint8([[[255,255,0]]])
+    hsvYellow = cv2.cvtColor(yellow, cv2.COLOR_BGR2HSV)
+    lowerLimit = hsvYellow[0][0][0] - 10, 100, 100
+    upperLimit = hsvYellow[0][0][0] + 10, 255, 255
+    print("颜色检测", colors_x)
+    print("颜色检测", lowerLimit)
+    print("颜色检测", upperLimit)
+
+
     class_name = ['黑色', '蓝色', '', '绿色', '白色', '黄色']
     data_input = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
+
     image = cv2.resize(data_input, (34, 9))
+
+
     image = np.transpose(image, (2, 0, 1))
+
+
     img = image / 255
+
+
     img = torch.tensor(img)
+
+
 
     normalize = transforms.Normalize(mean=[0.4243, 0.4947, 0.434],
                                      std=[0.2569, 0.2478, 0.2174])
     img = normalize(img)
     img = torch.unsqueeze(img, dim=0).to(device).float()
     xx = model(img)
-
     return class_name[int(torch.argmax(xx, dim=1)[0])]
-    return "蓝色"
+
 
 if __name__ == '__main__':
     class_name = ['black', 'blue', 'danger', 'green', 'white', 'yellow']

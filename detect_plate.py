@@ -107,7 +107,7 @@ def get_plate_rec_landmark(img, xyxy, conf, landmarks, class_num, device, plate_
 
     class_label = int(class_num)  # 车牌的的类型0代表单牌，1代表双层车牌
     roi_img = four_point_transform(img, landmarks_np)  # 透视变换得到车牌小图
-    color_code = plate_color_rec(roi_img, plate_color_model, device)  # 车牌颜色识别
+    color_code = plate_color_rec(roi_img, plate_color_model, device, img)  # 车牌颜色识别
     if class_label:  # 判断是否是双层车牌，是双牌的话进行分割后然后拼接
         roi_img = get_split_merge(roi_img)
     plate_number, rec_prob = get_plate_result(roi_img, device, plate_rec_model)  # 对车牌小图进行识别
