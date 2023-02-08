@@ -1,21 +1,15 @@
 import warnings
-import cv2
 import torch
 import numpy as np
 import torch.nn as nn
 from torchvision import transforms
-import collections
 from plate_recognition.plateNet import MyNet_color
-import pandas as pd
-import matplotlib.pyplot as plt
-import matplotlib.patches as patches
-import matplotlib.image as mpimg
 from PIL import Image
-from matplotlib.offsetbox import OffsetImage, AnnotationBbox
 import extcolors
-from colormap import rgb2hex
 
 import cv2
+
+
 # import extc
 
 class MyNet(nn.Module):
@@ -43,8 +37,7 @@ class MyNet(nn.Module):
         return logits
 
 
-def init_color_model(model_path,device):
-
+def init_color_model(model_path, device):
     # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     # print("color_rec_device:", device)
     # PATH = 'E:\study\plate\Chinese_license_plate_detection_recognition-main\weights\color_classify.pth'  # 定义模型路径
@@ -54,53 +47,54 @@ def init_color_model(model_path,device):
     net.load_state_dict(torch.load(model_path, map_location=torch.device(device)))
     net.eval().to(device)
     modelc = net
-    
+
     return modelc
 
 
-def plate_color_rec(img,model,device,origin_image):
-    cv2.imwrite('test.jpg',img)
-    colors_x = extcolors.extract_from_path('test.jpg', tolerance=34, limit=3)
-
-    yellow = np.uint8([[[255,255,0]]])
-    hsvYellow = cv2.cvtColor(yellow, cv2.COLOR_BGR2HSV)
-    lowerLimit = hsvYellow[0][0][0] - 10, 100, 100
-    upperLimit = hsvYellow[0][0][0] + 10, 255, 255
-    print("颜色检测", colors_x)
-    print("颜色检测", lowerLimit)
-    print("颜色检测", upperLimit)
-
-
+def plate_color_rec(img, model, device):
+    originImage = img
     class_name = ['黑色', '蓝色', '', '绿色', '白色', '黄色']
     data_input = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-
-
     image = cv2.resize(data_input, (34, 9))
-
-
     image = np.transpose(image, (2, 0, 1))
-
-
     img = image / 255
-
-
     img = torch.tensor(img)
-
-
 
     normalize = transforms.Normalize(mean=[0.4243, 0.4947, 0.434],
                                      std=[0.2569, 0.2478, 0.2174])
     img = normalize(img)
     img = torch.unsqueeze(img, dim=0).to(device).float()
     xx = model(img)
-    return class_name[int(torch.argmax(xx, dim=1)[0])]
+    color = class_name[int(torch.argmax(xx, dim=1)[0])]
+    if color == "绿色":  # 如果是绿色的，再检验是不是黄绿色
+        img = cv2.cvtColor(originImage, cv2.COLOR_BGR2RGB)
+        image = Image.fromarray(img)
+        colors_x = extcolors.extract_from_image(image, tolerance=20, limit=3)
+        for colorArr in colors_x[0]:
+            colorItem = colorArr[0]
+            red = colorItem[0]
+            green = colorItem[1]
+            blue = colorItem[2]
+            print("红色", red)
+            print("绿色", green)
+            print("蓝色", blue)
+            rgbColor = np.uint8([[[blue, green, red]]])
+            hsv = cv2.cvtColor(rgbColor, cv2.COLOR_BGR2HSV)
+            print("HSV值：", hsv)
+            if 17 <= hsv[0][0][0] < 30 and 50 < hsv[0][0][1] <= 255 and 70 < hsv[0][0][
+                2] <= 255:  # 黄色的HSV阈值 26-34, 橙色11 - 25
+                return "黄绿色"
+        return color
+    return color
 
 
 if __name__ == '__main__':
     class_name = ['black', 'blue', 'danger', 'green', 'white', 'yellow']
     data_input = cv2.imread("/mnt/Gpan/Mydata/pytorchPorject/myCrnnPlate/images/test.jpg")  # (高，宽，通道(B，G，R)),（H,W,C）
     device = torch.device("cuda" if torch.cuda.is_available else "cpu")
-    model = init_color_model("/mnt/Gpan/Mydata/pytorchPorject/Chinese_license_plate_detection_recognition/weights/color_classify.pth",device)
-    color_code = plate_color_rec(data_input,model,device)
+    model = init_color_model(
+        "/mnt/Gpan/Mydata/pytorchPorject/Chinese_license_plate_detection_recognition/weights/color_classify.pth",
+        device)
+    color_code = plate_color_rec(data_input, model, device)
     print(color_code)
     print(class_name[color_code])

@@ -1,23 +1,15 @@
 # -*- coding: UTF-8 -*-
 import argparse
-import time
-from pathlib import Path
 import os
 import cv2
 import torch
-import torch.backends.cudnn as cudnn
-from numpy import random
 import copy
 import numpy as np
 from models.experimental import attempt_load
 from utils.datasets import letterbox
-from utils.general import check_img_size, non_max_suppression_face, apply_classifier, scale_coords, xyxy2xywh, \
-    strip_optimizer, set_logging, increment_path
-from utils.plots import plot_one_box
-from utils.torch_utils import select_device, load_classifier, time_synchronized
+from utils.general import check_img_size, non_max_suppression_face, scale_coords
 from utils.cv_puttext import cv2ImgAddText
 from plate_recognition.plate_rec import get_plate_result, allFilePath, init_model, cv_imread
-# from plate_recognition.plate_cls import cv_imread
 from plate_recognition.double_plate_split_merge import get_split_merge
 from plate_recognition.color_rec import plate_color_rec, init_color_model
 import requests
@@ -107,10 +99,11 @@ def get_plate_rec_landmark(img, xyxy, conf, landmarks, class_num, device, plate_
 
     class_label = int(class_num)  # 车牌的的类型0代表单牌，1代表双层车牌
     roi_img = four_point_transform(img, landmarks_np)  # 透视变换得到车牌小图
-    color_code = plate_color_rec(roi_img, plate_color_model, device, img)  # 车牌颜色识别
+
     if class_label:  # 判断是否是双层车牌，是双牌的话进行分割后然后拼接
         roi_img = get_split_merge(roi_img)
     plate_number, rec_prob = get_plate_result(roi_img, device, plate_rec_model)  # 对车牌小图进行识别
+    color_code = plate_color_rec(roi_img, plate_color_model, device)  # 车牌颜色识别
     for dan in danger:  # 只要出现‘危’或者‘险’就是危险品车牌
         if dan in plate_number:
             plate_number = '危险品'
@@ -119,8 +112,8 @@ def get_plate_rec_landmark(img, xyxy, conf, landmarks, class_num, device, plate_
     result_dict['detect_conf'] = conf  # 检测区域得分
     # result_dict['landmarks'] = landmarks_np.tolist()  # 车牌角点坐标
     result_dict['plate_no'] = plate_number  # 车牌号
-    # result_dict['rec_conf'] = rec_prob  # 每个字符的概率
-    result_dict['roi_height'] = roi_img.shape[0]  # 车牌高度
+    result_dict['rec_conf'] = rec_prob  # 每个字符的概率
+    # result_dict['roi_height'] = roi_img.shape[0]  # 车牌高度
     result_dict['plate_color'] = color_code  # 车牌颜色
     result_dict['plate_type'] = class_label  # 单双层 0单层 1双层
 
