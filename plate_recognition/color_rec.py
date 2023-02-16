@@ -59,7 +59,6 @@ def plate_color_rec(img, model, device):
     image = np.transpose(image, (2, 0, 1))
     img = image / 255
     img = torch.tensor(img)
-
     normalize = transforms.Normalize(mean=[0.4243, 0.4947, 0.434],
                                      std=[0.2569, 0.2478, 0.2174])
     img = normalize(img)
@@ -75,12 +74,8 @@ def plate_color_rec(img, model, device):
             red = colorItem[0]
             green = colorItem[1]
             blue = colorItem[2]
-            print("红色", red)
-            print("绿色", green)
-            print("蓝色", blue)
             rgbColor = np.uint8([[[blue, green, red]]])
             hsv = cv2.cvtColor(rgbColor, cv2.COLOR_BGR2HSV)
-            print("HSV值：", hsv)
             if 17 <= hsv[0][0][0] < 30 and 50 < hsv[0][0][1] <= 255 and 70 < hsv[0][0][
                 2] <= 255:  # 黄色的HSV阈值 26-34, 橙色11 - 25
                 return "黄绿色"

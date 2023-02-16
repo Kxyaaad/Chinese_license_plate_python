@@ -254,7 +254,7 @@ def detect_image(imageUrl):  # 检测网络图片
         img = cv2.cvtColor(np.asarray(img), cv2.COLOR_BGRA2BGR)
 
     dict_list = detect_Recognition_plate(detect_model, img, device, plate_rec_model, opt.img_size, plate_color_model)
-    print("车牌号识别", dict_list)
+    # print("车牌号识别", dict_list)
     return dict_list
 
 
